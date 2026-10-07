@@ -1,0 +1,12 @@
+# Environment credentials
+.env
+*.env
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Docker storage
+postgres_data/
+cloudbeaver_data/

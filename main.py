@@ -56,6 +56,43 @@ def list_units(stage: Optional[str] = None, limit: int = 100):
         return conn.execute(sql, params).fetchall()
 
 
+@app.get("/units/reminders")
+def get_reminders():
+    # Ambil unit Waiting Customer Schedule umur H+1, H+2, H+3
+    # yang BELUM pernah dikirimi reminder pada tipe hari tersebut
+    sql = """
+        WITH waiting_units AS (
+            SELECT 
+                u.id AS unit_id,
+                u.serial_number,
+                u.customer_id,
+                c.name AS customer_name,
+                u.arrived_at,
+                FLOOR(EXTRACT(EPOCH FROM (now() - u.arrived_at)) / 86400)::int AS days_waiting
+            FROM units u
+            JOIN customers c ON u.customer_id = c.id
+            WHERE u.current_stage = 'Waiting Customer Schedule'
+              AND u.arrived_at IS NOT NULL
+        )
+        SELECT 
+            w.unit_id,
+            w.serial_number,
+            w.customer_id,
+            w.customer_name,
+            w.days_waiting,
+            'reminder_h' || w.days_waiting AS notif_type
+        FROM waiting_units w
+        LEFT JOIN notifications n 
+          ON w.unit_id = n.unit_id 
+         AND n.type = ('reminder_h' || w.days_waiting)
+        WHERE w.days_waiting BETWEEN 1 AND 3
+          AND n.id IS NULL
+        ORDER BY w.days_waiting ASC, w.unit_id ASC;
+    """
+    with get_conn() as conn:
+        return conn.execute(sql).fetchall()
+
+
 @app.get("/units/escalations")
 def get_escalations():
     # Ambil unit >= 4 hari di Waiting Customer Schedule

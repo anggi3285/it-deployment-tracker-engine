@@ -56,6 +56,40 @@ def list_units(stage: Optional[str] = None, limit: int = 100):
         return conn.execute(sql, params).fetchall()
 
 
+@app.get("/units/alerts/internal")
+def get_internal_alerts():
+    # 1. PO, Staging, QC > 1 hari
+    # 2. Ready to Delivery > couriers.max_ready_days
+    sql = """
+        WITH latest_event AS (
+            SELECT unit_id, MAX(changed_at) AS last_status_at
+            FROM status_events
+            GROUP BY unit_id
+        )
+        SELECT 
+            u.id AS unit_id,
+            u.serial_number,
+            u.current_stage,
+            c.name AS courier_name,
+            c.max_ready_days,
+            ROUND(EXTRACT(EPOCH FROM (now() - le.last_status_at)) / 86400, 1)::float AS days_in_stage,
+            CASE 
+                WHEN u.current_stage IN ('PO', 'Staging', 'QC') THEN 1
+                WHEN u.current_stage = 'Ready to Delivery' THEN COALESCE(c.max_ready_days, 3)
+            END AS max_allowed_days
+        FROM units u
+        JOIN latest_event le ON u.id = le.unit_id
+        LEFT JOIN couriers c ON u.courier_id = c.id
+        WHERE 
+            (u.current_stage IN ('PO', 'Staging', 'QC') AND le.last_status_at <= now() - INTERVAL '1 day')
+            OR
+            (u.current_stage = 'Ready to Delivery' AND le.last_status_at <= now() - (COALESCE(c.max_ready_days, 3) || ' days')::interval)
+        ORDER BY days_in_stage DESC;
+    """
+    with get_conn() as conn:
+        return conn.execute(sql).fetchall()
+
+
 @app.get("/units/reminders")
 def get_reminders():
     # Ambil unit Waiting Customer Schedule umur H+1, H+2, H+3

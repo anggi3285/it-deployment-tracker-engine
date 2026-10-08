@@ -28,6 +28,7 @@ class UnitIn(BaseModel):
 
 
 class StatusIn(BaseModel):
+    model_config = {"json_schema_extra": {"example": {"to_stage": "QC"}}}
     to_stage: str
     note: Optional[str] = None
     hold_reason: Optional[str] = None       # wajib kalau to_stage = On Hold

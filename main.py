@@ -24,18 +24,25 @@ def get_conn():
 class UnitIn(BaseModel):
     serial_number: str
     customer_id: int
-    courier_id: int
+    courier_id: Optional[int] = None        # Boleh kosong saat PO/Staging
 
 
 class StatusIn(BaseModel):
     model_config = {"json_schema_extra": {"example": {"to_stage": "QC"}}}
     to_stage: str
     note: Optional[str] = None
+    courier_id: Optional[int] = None        # Wajib diisi saat to_stage = Ready to Delivery / In Transit
     hold_reason: Optional[str] = None       # wajib kalau to_stage = On Hold
     scheduled_for: Optional[datetime] = None
 
 
 # ---------- Endpoint ----------
+@app.get("/couriers")
+def list_couriers():
+    with get_conn() as conn:
+        return conn.execute("SELECT id, name, max_ready_days FROM couriers ORDER BY id ASC").fetchall()
+
+
 @app.get("/health")
 def health():
     with get_conn() as conn:
@@ -226,6 +233,17 @@ def update_status(serial_number: str, body: StatusIn):
         if to == "On Hold" and not body.hold_reason:
             raise HTTPException(422, "hold_reason wajib diisi saat On Hold")
 
+        # Validasi Kurir saat masuk Ready to Delivery atau In Transit
+        courier_id = body.courier_id or unit["courier_id"]
+        if to in ("Ready to Delivery", "In Transit") and not courier_id:
+            raise HTTPException(422, f"courier_id wajib ditentukan saat unit masuk tahap '{to}'")
+
+        if body.courier_id:
+            # Validasi ID kurir ada di DB
+            valid_courier = conn.execute("SELECT 1 FROM couriers WHERE id = %s", (body.courier_id,)).fetchone()
+            if not valid_courier:
+                raise HTTPException(422, f"courier_id '{body.courier_id}' tidak ditemukan")
+
         # 2. Hitung kolom yang ikut berubah
         arrived_at = unit["arrived_at"]
         if to == "Waiting Customer Schedule" and arrived_at is None:
@@ -245,9 +263,9 @@ def update_status(serial_number: str, body: StatusIn):
         updated = conn.execute(
             """UPDATE units
                SET current_stage = %s, arrived_at = %s, reschedule_count = %s,
-                   hold_reason = %s, scheduled_for = %s
+                   hold_reason = %s, scheduled_for = %s, courier_id = %s
                WHERE id = %s RETURNING *""",
-            (to, arrived_at, reschedule_count, hold_reason, scheduled_for, unit["id"]),
+            (to, arrived_at, reschedule_count, hold_reason, scheduled_for, courier_id, unit["id"]),
         ).fetchone()
         conn.execute(
             "INSERT INTO status_events (unit_id, from_stage, to_stage, note) VALUES (%s, %s, %s, %s)",

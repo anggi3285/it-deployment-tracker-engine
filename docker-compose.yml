@@ -27,6 +27,32 @@ services:
     networks:
       - db_net
 
+  api:
+    build: .
+    container_name: tracker_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+    depends_on:
+      - postgres
+    networks:
+      - db_net
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_SECURE_COOKIE=false
+    volumes:
+      - /home/myserver/.n8n:/home/node/.n8n
+    networks:
+      - db_net
+
 volumes:
   postgres_data:
     name: postgres_data

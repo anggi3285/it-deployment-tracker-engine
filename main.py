@@ -56,6 +56,62 @@ def list_units(stage: Optional[str] = None, limit: int = 100):
         return conn.execute(sql, params).fetchall()
 
 
+@app.get("/units/escalations")
+def get_escalations():
+    # Ambil unit >= 4 hari di Waiting Customer Schedule
+    # Aturan: H+4 eskalasi pertama, ulangi tiap 3 hari jika belum ada jadwal
+    sql = """
+        WITH latest_escalation AS (
+            SELECT unit_id, MAX(sent_at) AS last_sent_at
+            FROM notifications
+            WHERE type LIKE 'escalation%'
+            GROUP BY unit_id
+        )
+        SELECT 
+            u.id AS unit_id,
+            u.serial_number,
+            c.name AS customer_name,
+            am.name AS am_name,
+            COALESCE(am.telegram_chat_id, '7704084297') AS am_telegram_id,
+            FLOOR(EXTRACT(EPOCH FROM (now() - u.arrived_at)) / 86400)::int AS days_waiting,
+            le.last_sent_at,
+            CASE 
+                WHEN le.last_sent_at IS NULL THEN 'escalation_1'
+                ELSE 'escalation_repeat'
+            END AS notif_type
+        FROM units u
+        JOIN customers c ON u.customer_id = c.id
+        JOIN account_managers am ON c.account_manager_id = am.id
+        LEFT JOIN latest_escalation le ON u.id = le.unit_id
+        WHERE u.current_stage = 'Waiting Customer Schedule'
+          AND u.arrived_at <= now() - INTERVAL '4 days'
+          AND (
+              le.last_sent_at IS NULL 
+              OR le.last_sent_at <= now() - INTERVAL '3 days'
+          )
+        ORDER BY days_waiting DESC;
+    """
+    with get_conn() as conn:
+        return conn.execute(sql).fetchall()
+
+
+class NotificationLog(BaseModel):
+    unit_id: int
+    type: str
+    sent_to: Optional[str] = None
+
+
+@app.post("/notifications/log", status_code=201)
+def log_notification(body: NotificationLog):
+    with get_conn() as conn:
+        logged = conn.execute(
+            """INSERT INTO notifications (unit_id, type, sent_to)
+               VALUES (%s, %s, %s) RETURNING *""",
+            (body.unit_id, body.type, body.sent_to),
+        ).fetchone()
+    return logged
+
+
 @app.post("/units", status_code=201)
 def create_unit(body: UnitIn):
     with get_conn() as conn:

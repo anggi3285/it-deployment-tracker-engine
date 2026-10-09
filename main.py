@@ -63,6 +63,62 @@ def list_units(stage: Optional[str] = None, limit: int = 100):
         return conn.execute(sql, params).fetchall()
 
 
+@app.get("/units/summary/morning")
+def get_morning_summary():
+    with get_conn() as conn:
+        # 1. Total unit per tahap
+        stage_counts = conn.execute("""
+            SELECT sr.stage, sr.sort_order, COUNT(u.id) AS total
+            FROM stage_rules sr
+            LEFT JOIN units u ON sr.stage = u.current_stage
+            GROUP BY sr.stage, sr.sort_order
+            ORDER BY sr.sort_order ASC;
+        """).fetchall()
+
+        # 2. Unit telat internal (PO, Staging, QC > 1 hari)
+        internal_overdue = conn.execute("""
+            WITH latest_event AS (
+                SELECT unit_id, MAX(changed_at) AS last_status_at
+                FROM status_events
+                GROUP BY unit_id
+            )
+            SELECT u.serial_number, u.current_stage,
+                   ROUND(EXTRACT(EPOCH FROM (now() - le.last_status_at)) / 86400, 1)::float AS days_stuck
+            FROM units u
+            JOIN latest_event le ON u.id = le.unit_id
+            WHERE u.current_stage IN ('PO', 'Staging', 'QC')
+              AND le.last_status_at <= now() - INTERVAL '1 day'
+            ORDER BY days_stuck DESC;
+        """).fetchall()
+
+        # 3. Unit idle di Ready to Delivery (melebihi max_ready_days kurir)
+        idle_delivery = conn.execute("""
+            WITH latest_event AS (
+                SELECT unit_id, MAX(changed_at) AS last_status_at
+                FROM status_events
+                GROUP BY unit_id
+            )
+            SELECT u.serial_number, c.name AS courier_name, c.max_ready_days,
+                   ROUND(EXTRACT(EPOCH FROM (now() - le.last_status_at)) / 86400, 1)::float AS days_idle
+            FROM units u
+            JOIN latest_event le ON u.id = le.unit_id
+            LEFT JOIN couriers c ON u.courier_id = c.id
+            WHERE u.current_stage = 'Ready to Delivery'
+              AND le.last_status_at <= now() - (COALESCE(c.max_ready_days, 3) || ' days')::interval
+            ORDER BY days_idle DESC;
+        """).fetchall()
+
+        # 4. Total aktif dan deployed
+        total_units = conn.execute("SELECT COUNT(*) AS count FROM units;").fetchone()["count"]
+
+    return {
+        "total_units": total_units,
+        "stages": stage_counts,
+        "internal_overdue": internal_overdue,
+        "idle_delivery": idle_delivery,
+    }
+
+
 @app.get("/units/alerts/internal")
 def get_internal_alerts():
     # 1. PO, Staging, QC > 1 hari

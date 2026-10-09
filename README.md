@@ -139,8 +139,14 @@ The engine is decoupled into a modular router-based FastAPI backend (`app/`) orc
 4. **04 - Morning Operations Summary:** 07:30 WIB daily operations briefing.
 5. **05 - Weekly Executive Narrative & Visual Report:** Automated weekly KPI summary with QuickChart visual bottleneck graphs.
 
-### Visual Reporting Preview
-![Weekly Bottleneck Chart](docs/screenshots/weekly_bottleneck_chart.png)
+### Visual Reporting & Automated Alerts Preview
+| Weekly Management Bottleneck Chart |
+| :---: |
+| ![Weekly Bottleneck Chart](docs/screenshots/weekly_bottleneck_chart.png) |
+
+| SLA Breach Alert (Workflow 01) | Account Manager Escalation (Workflow 03) |
+| :---: | :---: |
+| ![SLA Alert](docs/screenshots/telegram_sla_alert.png) | ![AM Escalation](docs/screenshots/telegram_am_escalation.png) |
 
 ---
 

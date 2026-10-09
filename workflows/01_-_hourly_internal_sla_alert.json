@@ -1,0 +1,115 @@
+{
+  "name": "01 - Hourly Internal SLA Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "15dff642-5039-47f3-84ac-5c1c655106e1",
+      "name": "Schedule Trigger (Hourly)"
+    },
+    {
+      "parameters": {
+        "url": "http://tracker_api:8000/units/alerts/internal",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        0
+      ],
+      "id": "4437cf20-0511-424c-a671-7847c2853593",
+      "name": "GET Internal Alerts"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (!items || items.length === 0) {\n  return [];\n}\n\nconst total = items.length;\nconst sample = items.slice(0, 6);\n\nconst daftar = sample.map(item => {\n  const u = item.json;\n  const ekspedisi = u.courier_name ? ' (' + u.courier_name + ')' : '';\n  return '\u2022 <code>' + u.serial_number + '</code> [' + u.current_stage + ekspedisi + '] - <b>' + u.days_in_stage + ' hari</b> (max: ' + u.max_allowed_days + 'h)';\n}).join('\\n');\n\nlet footer = '';\nif (total > 6) {\n  footer = '\\n<i>...dan ' + (total - 6) + ' unit overdue lainnya.</i>';\n}\n\nconst pesan = '\ud83d\udea8 <b>INTERNAL SLA BREACH ALERT (HOURLY)</b>\\n' +\n  'Total Unit Overdue: <b>' + total + ' unit</b>\\n' +\n  'Batas SLA: PO/Staging/QC max 1h, Ready to Delivery ikut kurir.\\n\\n' +\n  '<b>Daftar Unit Tertahan:</b>\\n' +\n  daftar + footer + '\\n\\n' +\n  'Segera koordinasi dengan tim teknis warehouse & staging.';\n\nreturn [{ json: { message_text: pesan, total_overdue: total } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "75145f0a-d9ef-445b-beaa-5f0682efe1d9",
+      "name": "Format Alert HTML"
+    },
+    {
+      "parameters": {
+        "chatId": "7704084297",
+        "text": "={{ $json.message_text }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "a1480cec-db9b-4898-8af0-27a8d9ca18d6",
+      "name": "Send Alert to Telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "ByrpwvsYspdgta4n",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Hourly)": {
+      "main": [
+        [
+          {
+            "node": "GET Internal Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Internal Alerts": {
+      "main": [
+        [
+          {
+            "node": "Format Alert HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Alert HTML": {
+      "main": [
+        [
+          {
+            "node": "Send Alert to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {}
+}

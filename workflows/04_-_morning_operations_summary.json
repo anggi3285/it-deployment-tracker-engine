@@ -1,0 +1,116 @@
+{
+  "name": "04 - Morning Operations Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8a0df238-b5c2-4acc-8ce5-6854aef3dc9c",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "http://tracker_api:8000/units/summary/morning    ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "a458bf78-9604-476d-a365-0750d4a5c609",
+      "name": "GET Summary Mornimg"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// 1. Rekap per stage\nconst stageIcons = {\n  'PO': '\ud83d\udcdd',\n  'Staging': '\u2699\ufe0f',\n  'QC': '\ud83d\udd0d',\n  'Ready to Delivery': '\ud83d\udce6',\n  'In Transit': '\ud83d\ude9a',\n  'Waiting Customer Schedule': '\u23f3',\n  'Scheduled': '\ud83d\udcc5',\n  'On Hold': '\u23f8\ufe0f',\n  'Deployed': '\u2705'\n};\n\nconst stageLines = data.stages.map(s => {\n  const icon = stageIcons[s.stage] || '\u2022';\n  return `${icon} <b>${s.stage}</b>: ${s.total} unit`;\n}).join('\\n');\n\n// 2. Sample overdue internal (max 3)\nconst overdueCount = data.internal_overdue.length;\nlet overdueText = '<i>Tidak ada unit overdue.</i>';\nif (overdueCount > 0) {\n  const sample = data.internal_overdue.slice(0, 3).map(u => \n    `  \u2022 <code>${u.serial_number}</code> [${u.current_stage}] (${u.days_stuck} hari)`\n  ).join('\\n');\n  overdueText = `<b>${overdueCount} unit tertahan:</b>\\n${sample}`;\n  if (overdueCount > 3) overdueText += `\\n  <i>+ ${overdueCount - 3} unit lainnya</i>`;\n}\n\n// 3. Sample idle delivery (max 3)\nconst idleCount = data.idle_delivery.length;\nlet idleText = '<i>Semua pengiriman on-track.</i>';\nif (idleCount > 0) {\n  const sample = data.idle_delivery.slice(0, 3).map(u => \n    `  \u2022 <code>${u.serial_number}</code> [${u.courier_name}] (${u.days_idle} hari / max: ${u.max_ready_days}h)`\n  ).join('\\n');\n  idleText = `<b>${idleCount} unit melebihi batas kurir:</b>\\n${sample}`;\n  if (idleCount > 3) idleText += `\\n  <i>+ ${idleCount - 3} unit lainnya</i>`;\n}\n\nconst pesan = `\ud83d\udccb <b>RINGKASAN OPERASIONAL PAGI</b>\n\ud83d\udcc5 <i>${new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</i>\nTotal Armada: <b>${data.total_units} unit</b>\n\n<b>Distribusi Status:</b>\n${stageLines}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u26a0\ufe0f <b>Overdue Internal (PO/Staging/QC > 1h):</b>\n${overdueText}\n\n\ud83d\udce6 <b>Idle Ready to Delivery:</b>\n${idleText}\n\n<i>Sistem otomatis @itsm_escalator_bot</i>`;\n\nreturn [{ json: { message_text: pesan } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "aff72666-430c-42a4-8891-29115f17ea29",
+      "name": "Formart Alert HTML "
+    },
+    {
+      "parameters": {
+        "chatId": "7704084297",
+        "text": "={{ $json.message_text }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "21044e76-6a3c-464f-aaf8-5e19c10098b7",
+      "name": "Send Alert to Telegram",
+      "webhookId": "c0cdb10c-3dba-47da-8f2c-8a3d1c05a1be",
+      "credentials": {
+        "telegramApi": {
+          "id": "ByrpwvsYspdgta4n",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "GET Summary Mornimg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Summary Mornimg": {
+      "main": [
+        [
+          {
+            "node": "Formart Alert HTML ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formart Alert HTML ": {
+      "main": [
+        [
+          {
+            "node": "Send Alert to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {}
+}

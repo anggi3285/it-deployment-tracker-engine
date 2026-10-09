@@ -1,0 +1,121 @@
+{
+  "name": "05 - Weekly Executive Narrative & Visual Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                5
+              ],
+              "triggerAtHour": 19,
+              "triggerAtMinute": 17
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a4abf0e7-b76a-40ae-8305-137f702d6891",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "http://tracker_api:8000/units/summary/weekly",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "30bb27ca-044d-40b3-a7fb-271be08c949c",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\n\n// 1. Data Summary\nconst total = d.totals.total_units;\nconst deployed = d.totals.deployed;\nconst rate = d.totals.deployment_rate_pct;\nconst onHold = d.totals.on_hold;\n\n// 2. Bottlenecks\nconst topStuck = d.bottlenecks || [];\nconst stuckLabels = topStuck.map(b => `${b.customer_name.slice(0, 15)} (${b.avg_waiting_days}d)`);\nconst stuckCounts = topStuck.map(b => b.waiting_units);\n\n// 3. QuickChart Config untuk Grafik Batang Bottleneck\nconst chartConfig = {\n  type: 'horizontalBar',\n  data: {\n    labels: stuckLabels,\n    datasets: [{\n      label: 'Unit Menunggu Jadwal',\n      data: stuckCounts,\n      backgroundColor: 'rgba(239, 68, 68, 0.85)'\n    }]\n  },\n  options: {\n    title: { display: true, text: 'Top 5 Customer Bottlenecks (Days Waiting)' },\n    scales: { xAxes: [{ ticks: { beginAtZero: true } }] }\n  }\n};\nconst chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&w=650&h=320`;\n\n// 4. Susun Narasi Eksekutif (HTML)\nlet reportText = `\ud83d\udcca <b>WEEKLY OPERATIONS EXECUTIVE REPORT</b>\\n`;\nreportText += `<i>Periode: ${new Date(d.generated_at).toLocaleDateString('id-ID', { dateStyle: 'long' })}</i>\\n\\n`;\n\nreportText += `<b>1. EXECUTIVE HIGHLIGHTS</b>\\n`;\nreportText += `\u2022 Deployment Rate: <b>${rate}%</b> (${deployed} dari ${total} unit rampung)\\n`;\nreportText += `\u2022 Pipeline Aktif: <b>${d.totals.in_progress} unit</b> sedang berjalan di lapangan\\n`;\nreportText += `\u2022 Unit On Hold: <b>${onHold} unit</b> (butuh eskalasi PIC/Vendor)\\n\\n`;\n\nreportText += `<b>2. LEAD TIME & SLA METRICS</b>\\n`;\nreportText += `\u2022 Internal Cycle (PO \u2794 QC): <b>${d.kpi_lead_times.internal_lead_days} hari</b>\\n`;\nreportText += `\u2022 Customer Response Time: <b>${d.kpi_lead_times.customer_response_days} hari</b>\\n`;\nreportText += `\u2022 Insiden Reschedule: <b>${d.kpi_lead_times.total_reschedules} kali</b>\\n\\n`;\n\nreportText += `<b>3. TOP BOTTLENECKS (ACTION REQUIRED)</b>\\n`;\ntopStuck.forEach((b, idx) => {\n  reportText += `${idx+1}. <b>${b.customer_name}</b>: ${b.waiting_units} unit macet (${b.avg_waiting_days} hari) | PIC AM: ${b.am_name}\\n`;\n});\nreportText += `\\n<i>Rekomendasi: Follow up prioritas customer di atas untuk konfirmasi tanggal cut-off jadwal sebelum hari Senin.</i>`;\n\nreturn [{\n  json: {\n    chart_url: chartUrl,\n    caption: reportText\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "73f27091-d22f-4e1a-a7ce-702eb4ed0df3",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "7704084297",
+        "file": "={{ $json.chart_url }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "6fe3de76-e550-4374-a1c8-f4d8ad42c909",
+      "name": "Send a photo message",
+      "webhookId": "71819285-a39b-48fe-a1b9-5b3ad20d1aa6",
+      "credentials": {
+        "telegramApi": {
+          "id": "ByrpwvsYspdgta4n",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a photo message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {}
+}

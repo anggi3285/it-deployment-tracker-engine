@@ -1,0 +1,119 @@
+{
+  "name": "02 - Customer Schedule Reminder (H+1 to H+3)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3059b9a2-180e-49e7-8f32-97c186203418",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "http://tracker_api:8000/units/reminders",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        0
+      ],
+      "id": "1cb89f8a-a3e5-4428-ae9d-a2c5bbb63c9a",
+      "name": "GET Reminders"
+    },
+    {
+      "parameters": {
+        "chatId": "7704084297",
+        "text": "=\ud83d\udce6 <b>CUSTOMER REMINDER ({{ $json.notif_type.toUpperCase() }})</b>\n\nCustomer: <b>{{ $json.customer_name }}</b>\nUnit: <code>{{ $json.serial_number }}</code>\nStatus: Menunggu Jadwal Deployment (Hari ke-{{ $json.days_waiting }})\n\nMohon konfirmasi kesiapan user/ruangan untuk instalasi laptop.",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "ca20e8fe-751e-475e-a6e6-f6484b40d5aa",
+      "name": "Send Telegram Reminder",
+      "credentials": {
+        "telegramApi": {
+          "id": "ByrpwvsYspdgta4n",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://tracker_api:8000/notifications/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  unit_id: $('GET Reminders').item.json.unit_id,\n  type: $('GET Reminders').item.json.notif_type,\n  sent_to: 'Telegram:' + $('GET Reminders').item.json.customer_name\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        660,
+        0
+      ],
+      "id": "0d16f373-f631-4878-a627-09c74d9bd170",
+      "name": "Log Notification"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "GET Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Reminders": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram Reminder": {
+      "main": [
+        [
+          {
+            "node": "Log Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {}
+}

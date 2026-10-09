@@ -388,3 +388,73 @@ def get_metrics():
         "customer_response_time_days": float(cust_res["avg_response_days"]) if cust_res and cust_res["avg_response_days"] is not None else 0.0,
         "reschedule_metrics": resched_res
     }
+
+
+@app.get("/units/summary/weekly")
+def get_weekly_summary():
+    with get_conn() as conn:
+        # 1. Total unit & breakdown status
+        stages = conn.execute("""
+            SELECT current_stage, COUNT(*) AS count
+            FROM units
+            GROUP BY current_stage
+            ORDER BY count DESC
+        """).fetchall()
+
+        total_units = conn.execute("SELECT COUNT(*) AS total FROM units").fetchone()["total"]
+        deployed_units = conn.execute("SELECT COUNT(*) AS count FROM units WHERE current_stage = 'Deployed'").fetchone()["count"]
+        on_hold_units = conn.execute("SELECT COUNT(*) AS count FROM units WHERE current_stage = 'On Hold'").fetchone()["count"]
+        in_progress = total_units - (deployed_units + on_hold_units)
+
+        # 2. Lead times & metrics
+        metrics = get_metrics()
+
+        # 3. Ekspedisi performance
+        couriers = conn.execute("""
+            SELECT 
+                c.name,
+                c.max_ready_days,
+                COUNT(u.id) FILTER (WHERE u.current_stage = 'Ready to Delivery') AS pending_pickup,
+                COUNT(u.id) FILTER (WHERE u.current_stage = 'In Transit') AS in_transit,
+                COUNT(u.id) FILTER (WHERE u.current_stage = 'Deployed') AS delivered
+            FROM couriers c
+            LEFT JOIN units u ON u.courier_id = c.id
+            GROUP BY c.id, c.name, c.max_ready_days
+            ORDER BY c.name ASC
+        """).fetchall()
+
+        # 4. Top bottleneck customers (paling lama di Waiting Customer Schedule)
+        stuck_customers = conn.execute("""
+            SELECT 
+                cust.name AS customer_name,
+                am.name AS am_name,
+                COUNT(u.id) AS waiting_units,
+                ROUND(AVG(EXTRACT(EPOCH FROM (NOW() - u.arrived_at)) / 86400)::numeric, 1) AS avg_waiting_days
+            FROM units u
+            JOIN customers cust ON u.customer_id = cust.id
+            JOIN account_managers am ON cust.account_manager_id = am.id
+            WHERE u.current_stage = 'Waiting Customer Schedule' AND u.arrived_at IS NOT NULL
+            GROUP BY cust.id, cust.name, am.name
+            ORDER BY waiting_units DESC, avg_waiting_days DESC
+            LIMIT 5
+        """).fetchall()
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "totals": {
+            "total_units": total_units,
+            "deployed": deployed_units,
+            "in_progress": in_progress,
+            "on_hold": on_hold_units,
+            "deployment_rate_pct": round((deployed_units / total_units * 100), 1) if total_units else 0
+        },
+        "stage_distribution": {s["current_stage"]: s["count"] for s in stages},
+        "kpi_lead_times": {
+            "internal_lead_days": metrics["internal_lead_time_days"],
+            "customer_response_days": metrics["customer_response_time_days"],
+            "total_reschedules": metrics["reschedule_metrics"]["total_reschedules"] or 0
+        },
+        "courier_performance": couriers,
+        "bottlenecks": stuck_customers
+    }
+

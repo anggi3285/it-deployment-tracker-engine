@@ -120,5 +120,29 @@ ORDER BY sr.sort_order ASC;
 
 ---
 
+## 🤖 Modular REST API & n8n Automation Workflows
+
+The engine is decoupled into a modular router-based FastAPI backend (`app/`) orchestrated by 5 automated n8n workflows:
+
+### API Endpoints
+- `GET /health` & `GET /metrics`: Service health check & end-to-end lead time analytics.
+- `GET /units` & `POST /units`: Unit tracking & transition dispatching via state machine.
+- `GET /units/alerts/internal`: Flags internal SLA breach (PO, Staging, QC > 24h) & idle courier pickup.
+- `GET /units/reminders`: H+1 to H+3 client reminder queue with idempotency protection.
+- `GET /units/escalations`: H+4 Account Manager escalation queue with 3-day repeat interval.
+- `GET /units/summary/morning` & `GET /units/summary/weekly`: Executive morning recap & weekly management reporting.
+
+### Automated n8n Workflows (`workflows/`)
+1. **01 - Hourly Internal SLA Alert:** Hourly polling of internal bottlenecks with Telegram notifications.
+2. **02 - Customer Schedule Reminder (H+1 to H+3):** Daily reminders sent to customer contacts.
+3. **03 - Account Manager Escalation (H+4):** Dedicated escalation notices to AMs for stuck deployments.
+4. **04 - Morning Operations Summary:** 07:30 WIB daily operations briefing.
+5. **05 - Weekly Executive Narrative & Visual Report:** Automated weekly KPI summary with QuickChart visual bottleneck graphs.
+
+### Visual Reporting Preview
+![Weekly Bottleneck Chart](docs/screenshots/weekly_bottleneck_chart.png)
+
+---
+
 ## 📄 License
 MIT License.

@@ -1,34 +1,36 @@
 # 📦 IT Deployment Lifecycle & SLA Monitoring Pipeline
 
-A robust PostgreSQL schema, event-sourcing tracking engine, and automated telemetry simulation designed to monitor end-to-end IT hardware deployment workflows (from PO receipt, staging, quality control, courier logistics, customer site scheduling, to final on-site handover).
+> **DISCLAIMER:** This project is an independent engineering portfolio project. All dataset records, serial numbers, customer names, metrics, and incident timestamps are **100% synthetically generated dummy data** to simulate enterprise ITSM operational environments without containing any internal or confidential company information.
 
-Built to demonstrate **DevOps / Database Architecture / Operational Automation** practices with strict SLA validation and state-machine transitions.
+---
+
+## 🎯 Problem Statement
+In enterprise hardware rollout operations, managing hundreds of workstations across disparate logistics vendors, staging centers, and branch offices leads to silent SLA breaches:
+- **Blind spots in internal throughput:** Hardware lingering in staging and quality control beyond standard turn-around limits.
+- **Logistics bottlenecks:** Courier carriers holding dispatched packages beyond agreed delivery timeframes.
+- **Customer scheduling paralysis:** Shipped hardware arriving at branch offices but sitting uninstalled for weeks without an agreed implementation date.
+- **Alert fatigue:** Absence of automated escalation chains and deduplication policies results in operational chaos.
+
+This pipeline solves these operational blind spots through a hardened PostgreSQL state machine, a modular FastAPI event processor, and event-driven n8n automation flows.
 
 ---
 
 ## 🏗️ Architecture & State Machine
-
-```
-[ PO ] ──► [ Staging ] ◄─── (QC Rework)
-                 │
-                 ▼
-              [ QC ]
-                 │
-                 ▼
-       [ Ready to Delivery ]
-                 │
-                 ▼
-           [ In Transit ] (Ekspedisi SLA tracking)
-                 │
-                 ▼
-    [ Waiting Customer Schedule ] ◄─── (Reschedule)
-                 │
-        ┌────────┴────────┐
-        ▼                 ▼
-   [ Scheduled ]     [ On Hold ]
-        │                 │
-        ▼                 ▼
-   [ Deployed ]      [ Scheduled ]
+```mermaid
+stateDiagram-v2
+    [*] --> PO: PO Issued
+    PO --> Staging: Hardware Received
+    Staging --> QC: Config & OS Ready
+    QC --> Staging: QC Failed (Rework)
+    QC --> Ready_to_Delivery: QC Passed & Courier Assigned
+    Ready_to_Delivery --> In_Transit: Courier Picked Up
+    In_Transit --> Waiting_Customer_Schedule: Arrived at Customer Site
+    Waiting_Customer_Schedule --> Scheduled: Customer Confirmed Date
+    Scheduled --> Waiting_Customer_Schedule: Customer Rescheduled
+    Waiting_Customer_Schedule --> On_Hold: Site Issue / Hold Reason
+    On_Hold --> Scheduled: Blocker Cleared & Rescheduled
+    Scheduled --> Deployed: On-Site Handover Complete
+    Deployed --> [*]
 ```
 
 ---
@@ -125,8 +127,9 @@ ORDER BY sr.sort_order ASC;
 The engine is decoupled into a modular router-based FastAPI backend (`app/`) orchestrated by 5 automated n8n workflows:
 
 ### API Endpoints
-- `GET /health` & `GET /metrics`: Service health check & end-to-end lead time analytics.
+- `GET /health` & `GET /metrics`: Service health check, lead time analytics, and escalation resolution rates.
 - `GET /units` & `POST /units`: Unit tracking & transition dispatching via state machine.
+- `GET /units/risks`: Automated risk scoring (0-100) prioritizing high-risk hardware bottlenecks (QC, logistics, client delays).
 - `GET /units/alerts/internal`: Flags internal SLA breach (PO, Staging, QC > 24h) & idle courier pickup.
 - `GET /units/reminders`: H+1 to H+3 client reminder queue with idempotency protection.
 - `GET /units/escalations`: H+4 Account Manager escalation queue with 3-day repeat interval.
